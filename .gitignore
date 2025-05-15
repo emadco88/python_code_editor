@@ -1,0 +1,15 @@
+# Ignore directory
+__pycache__/
+venv/
+*.pyc
+*.log
+*.db
+00_loop_bconnect_servers/*.log
+# The file containing environment variables
+.env
+
+# Ignore IDE specific files
+.idea/
+.vscode/
+*.sw*
+
