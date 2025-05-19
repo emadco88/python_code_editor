@@ -122,7 +122,7 @@ class GUI(Tk):
         text.bind("<KeyPress>", lambda e: self.autoclose_pairs(e))
         text.bind("<Tab>", lambda e: self.show_autocomplete(e))
         text.bind("<Control-BackSpace>", lambda e: self.delete_last_word(e))
-
+        text.bind("<Control-space>", lambda e: self.show_workbooks_autocomplete(e))
         text.bind("<Control-Right>", lambda e: self.ctrl_jump_right(e))
         text.bind("<Shift-Control-Right>", lambda e: self.shift_ctrl_jump_right(e))
         text.bind("<Control-Left>", lambda e: self.ctrl_jump_left(e))
@@ -207,4 +207,7 @@ class GUI(Tk):
         ...
 
     def install_jedi(self):
+        ...
+
+    def show_workbooks_autocomplete(self, e):
         ...

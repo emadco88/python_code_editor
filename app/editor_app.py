@@ -293,7 +293,7 @@ class App(editor_gui.GUI):
             self.active_menu = None
         return "break"
 
-    def show_autocomplete(self, event=None):
+    def show_autocomplete(self, event=None, str_complete=None):
         text = self.get_active_text()
 
         if self.active_menu:
@@ -301,43 +301,46 @@ class App(editor_gui.GUI):
             self.active_menu = None
 
         try:
-            prefix = ''
-            code = text.get("1.0", "end")
-            line, column = map(int, text.index("insert").split("."))
-            if event:
-                current_line = text.get(f"{line}.0", f"{line}.{column}")
+            if str_complete:
+                completions = str_complete
+            else:
                 prefix = ''
-                for char in reversed(current_line):
-                    if not (char.isalnum() or char == '_'):
-                        break
-                    prefix = char + prefix
+                code = text.get("1.0", "end")
+                line, column = map(int, text.index("insert").split("."))
+                if event:
+                    current_line = text.get(f"{line}.0", f"{line}.{column}")
+                    prefix = ''
+                    for char in reversed(current_line):
+                        if not (char.isalnum() or char == '_'):
+                            break
+                        prefix = char + prefix
 
-                if len(prefix) < 1:
-                    if current_line.strip() == '':
-                        text.insert("insert", " " * 4)
+                    if len(prefix) < 1:
+                        if current_line.strip() == '':
+                            text.insert("insert", " " * 4)
+                        return "break"
+                if not self.jedi:
+                    print("jedi not installed, cancel autocompletion ...")
                     return "break"
+                script = self.jedi.Script(code=code, path="script.py")
+                completions = script.complete(line, column)
+                completions = [x.name for x in completions if not x.name.startswith("__") and x.name.startswith(prefix)]
 
-            if not self.jedi:
-                print("jedi not installed, cancel autocompletion ...")
-                return "break"
-            script = self.jedi.Script(code=code, path="script.py")
-            completions = script.complete(line, column)
             if not completions:
                 return "break"
 
-            completions = [x for x in completions if not x.name.startswith("__") and x.name.startswith(prefix)]
-            completions.sort(key=lambda x: x.name.lower())
+            completions.sort(key=lambda x: x.lower())
 
             if len(completions) == 1:
-                name = completions[0].name
+                name = completions[0]
                 return self.insert_completion(name, text=text)
 
             menu = tk.Menu(self, tearoff=0)
             self.active_menu = menu
             for comp in completions:
                 menu.add_command(
-                    label=comp.name,
-                    command=lambda complete_name=comp.name, m=menu: self.insert_completion(complete_name, m))
+                    label=comp,
+                    command=lambda complete_name=comp, m=menu: self.insert_completion(complete_name, m))
 
             x, y, _, _ = text.bbox("insert")
             if x is None or y is None:
@@ -450,3 +453,18 @@ class App(editor_gui.GUI):
     def restart_app():
         python = sys.executable
         os.execl(python, python, *sys.argv)
+
+    def show_workbooks_autocomplete(self, event=None):
+        try:
+            import xlwings as xw
+            workbooks = [b.name for b in xw.books]
+        except Exception as e:
+            workbooks = [f"Error: {str(e)}"]
+
+        if not workbooks:
+            return
+
+        # Optional: Filter by prefix if text exists
+        # You can also get cursor position and check context if needed
+
+        self.show_autocomplete(event=event, str_complete=workbooks)
