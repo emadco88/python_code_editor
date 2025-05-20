@@ -1,17 +1,25 @@
 import os
 import subprocess
+import tempfile
+import threading
 import tkinter as tk
 import sqlite3
+import traceback
 from tkinter import messagebox
 from datetime import datetime
 import sys
-import io
+import ast
 from . import editor_gui
+from .name_checker import NameChecker
+
+MAX_OUTPUT_CHARS = 2000
 
 
 class App(editor_gui.GUI):
     def __init__(self):
         super(App, self).__init__()
+        self.process = None
+        self.thread = None
         try:
             import jedi
             self.jedi = jedi
@@ -21,6 +29,7 @@ class App(editor_gui.GUI):
             print("Jedi is not installed")
 
         self.open_new_tab(initial_code=self.get_last_code())
+        self.should_stop = threading.Event()
 
     def ctrl_jump_right(self, event=None):
         self._jump_word(direction="right")
@@ -255,7 +264,7 @@ class App(editor_gui.GUI):
     def autoclose_pairs(self, event):
         text = self.get_active_text()
         pairs = {'(': ')', '[': ']', '{': '}', '"': '"', "'": "'"}
-        open_chars = pairs.keys()
+        # open_chars = pairs.keys()
         close_chars = pairs.values()
 
         start = end = None
@@ -401,43 +410,94 @@ class App(editor_gui.GUI):
             return "break"
 
     def run_code(self):
+        self.run_button.config(state="disabled")
         self.save_current_code()
-        code = self.get_active_text().get("1.0", "end")
-        self.get_active_output().delete("1.0", "end")
-        stdout_backup = sys.stdout
-        stderr_backup = sys.stderr
-        sys.stdout = io.StringIO()
-        sys.stderr = sys.stdout
-        try:
-            exec(code, {})
-        except ModuleNotFoundError as e:
-            module_name = e.name  # ✅ clean and direct
-            confirm = messagebox.askokcancel("Missing Module", f"Module '{module_name}' is missing.\nInstall it?")
-            if confirm:
-                try:
-                    subprocess.run([sys.executable, "-m", "pip", "install", module_name], check=True)
-                    messagebox.showinfo("Installed", f"Module '{module_name}' installed.\nPlease re-run your code.")
-                except subprocess.CalledProcessError as install_error:
-                    messagebox.showerror("Install Failed", f"Could not install '{module_name}':\n{install_error}")
-            else:
-                self.get_active_output().insert("1.0", f"Missing module: {module_name}\n")
-        except Exception as e:
-            self.get_active_output().insert("1.0", f"Error: {str(e)}\n")
-        else:
-            # output_text = sys.stdout.getvalue()
-            # last_lines = "\n".join(output_text.splitlines()[-20:])
-            # self.get_active_output().insert("1.0", last_lines)
-            buffer = sys.stdout
-            buffer.seek(0)
-            short_output = buffer.read(200)
-            rest = buffer.read(1)
-            if rest:
-                short_output += "\n... (truncated)"
-            self.get_active_output().insert("1.0", short_output)
+        text = self.get_active_text()
+        output = self.get_active_output()
+        code = text.get("1.0", "end")
 
-        finally:
-            sys.stdout = stdout_backup
-            sys.stderr = stderr_backup
+        # Clear output and error marks
+        output.delete("1.0", "end")
+        text.tag_remove("exec_error", "1.0", "end")
+        text.tag_configure("exec_error", underline=True, foreground="red")
+
+        # Write code to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".py", mode="w", encoding="utf-8") as tmp:
+            tmp.write(code)
+            script_path = tmp.name
+
+        def mark_error_line():
+            try:
+                compiled = compile(code, script_path, "exec")
+                exec(compiled, {})
+            except Exception as e:
+                tb = traceback.extract_tb(e.__traceback__)
+                for entry in reversed(tb):
+                    if entry.filename == script_path:
+                        lineno = entry.lineno
+                        start = f"{lineno}.0"
+                        end = f"{lineno}.end"
+                        text.tag_add("exec_error", start, end)
+                        break
+
+                if isinstance(e, ModuleNotFoundError):
+                    module_name = e.name
+                    confirm = messagebox.askokcancel("Missing Module",
+                                                     f"Module '{module_name}' is missing.\nInstall it?")
+                    if confirm:
+                        try:
+                            subprocess.run([sys.executable, "-m", "pip", "install", module_name], check=True)
+                            messagebox.showinfo("Installed",
+                                                f"Module '{module_name}' installed.\nPlease re-run your code.")
+                        except subprocess.CalledProcessError as install_error:
+                            messagebox.showerror("Install Failed",
+                                                 f"Could not install '{module_name}':\n{install_error}")
+                    else:
+                        output.insert("end", f"Missing module: {module_name}\n")
+                else:
+                    output.insert("end", f"Execution error: {str(e)}\n")
+
+        def execute():
+            try:
+                self.process = subprocess.Popen(
+                    [sys.executable, script_path],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding='utf-8'
+                )
+                stdout, stderr = self.process.communicate()
+
+                output_text = stdout + stderr
+                trimmed = output_text[:MAX_OUTPUT_CHARS]
+                if len(output_text) > MAX_OUTPUT_CHARS:
+                    trimmed += "\n... (output truncated)"
+
+                output.insert("end", trimmed)
+
+                output.see("end")
+                output.update_idletasks()
+
+                if self.process.returncode != 0:
+                    mark_error_line()
+
+            except Exception as e:
+                output.insert("end", f"Execution error: {str(e)}\n")
+            finally:
+                if os.path.exists(script_path):
+                    os.remove(script_path)
+                self.process = None
+                self.run_button.config(state="normal")
+
+        self.thread = threading.Thread(target=execute)
+        self.thread.start()
+
+    def stop_code(self):
+        if self.process and self.process.poll() is None:
+            self.process.terminate()
+            self.get_active_output().insert("end", "\n[!] Code execution forcibly stopped.\n")
+            self.process = None
+        self.run_button.config(state='normal')
 
     def install_jedi(self):
         try:
@@ -468,3 +528,36 @@ class App(editor_gui.GUI):
         # You can also get cursor position and check context if needed
 
         self.show_autocomplete(event=event, str_complete=workbooks)
+
+    def check_errors(self):
+        text = self.get_active_text()
+        if not text:
+            return
+
+        text.tag_delete("syntax_error")
+        text.tag_configure("syntax_error", underline=True, foreground="red")
+
+        code = text.get("1.0", "end-1c")
+
+        try:
+            tree = ast.parse(code)
+        except SyntaxError as e:
+            lineno, offset = e.lineno, e.offset
+            start = f"{lineno}.{max(offset - 1, 0)}"
+            end = f"{lineno}.{offset}"
+            text.tag_add("syntax_error", start, end)
+            messagebox.showerror("Syntax Error", f"{e.msg} on line {lineno}")
+            return
+
+        checker = NameChecker()
+        checker.visit(tree)
+        for name, lineno, col in checker.errors:
+            start = f"{lineno}.{col}"
+            end = f"{lineno}.{col + len(name)}"
+            text.tag_add("syntax_error", start, end)
+
+        if checker.errors:
+            msg_lines = [f"Possibly undefined name '{n}' at line {l}" for n, l, _ in checker.errors]
+            messagebox.showwarning("Name Errors", "\n".join(msg_lines))
+        else:
+            messagebox.showinfo("Check Complete", "No syntax or name errors detected.")

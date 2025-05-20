@@ -24,21 +24,25 @@ class GUI(Tk):
         self.active_menu = None
         self.local_scope = {}
 
-        control_bar = tk.Frame(self)
-        control_bar.pack(side='top', anchor='w', fill='x')
-        tk.Label(control_bar, text="Font Size:").pack(side='left', padx=5, pady=5)
-        tk.Button(control_bar, text="+", command=lambda: self.increase_font(), width=2).pack(side='left')
-        tk.Button(control_bar, text="-", command=lambda: self.decrease_font(), width=2).pack(side='left')
-        tk.Button(control_bar, text="Run Code", command=lambda: self.run_code()).pack(side='left', padx=10)
-        tk.Button(control_bar, text="Save Code", command=lambda: self.save_current_code()).pack(side='left', padx=10)
-        tk.Button(control_bar, text="Close Editor", command=lambda: self.close_editor()).pack(side='left', padx=10)
-        tk.Button(control_bar, text="Open Editor", command=lambda: self.open_new_tab()).pack(side='left', padx=10)
-        tk.Button(control_bar, text="Manage Codes", command=lambda: self.manage_codes()).pack(side='left', padx=10)
-        tk.Button(control_bar, text="Quit App", command=lambda: self.quit_app()).pack(side='left', padx=10)
+        ctrl_bar = tk.Frame(self)
+        ctrl_bar.pack(side='top', anchor='w', fill='x')
+        tk.Label(ctrl_bar, text="Font Size:").pack(side='left', padx=5, pady=5)
+        tk.Button(ctrl_bar, text="+", command=lambda: self.increase_font(), width=2).pack(side='left')
+        tk.Button(ctrl_bar, text="-", command=lambda: self.decrease_font(), width=2).pack(side='left')
+        self.run_button = tk.Button(ctrl_bar, text="Run Code", command=lambda: self.run_code())
+        self.run_button.pack(side='left', padx=10)
+        tk.Button(ctrl_bar, text="Stop Code", command=lambda: self.stop_code()).pack(side='left', padx=10)
+        tk.Button(ctrl_bar, text="Check Errors", command=lambda: self.check_errors()).pack(side='left', padx=10)
+        tk.Button(ctrl_bar, text="Save Code", command=lambda: self.save_current_code()).pack(side='left', padx=10)
+        tk.Button(ctrl_bar, text="Close Editor", command=lambda: self.close_editor()).pack(side='left', padx=10)
+        tk.Button(ctrl_bar, text="Open Editor", command=lambda: self.open_new_tab()).pack(side='left', padx=10)
+        tk.Button(ctrl_bar, text="Manage Codes", command=lambda: self.manage_codes()).pack(side='left', padx=10)
+        tk.Button(ctrl_bar, text="Quit App", command=lambda: self.quit_app()).pack(side='left', padx=10)
+
         try:
             import jedi
         except ImportError:
-            tk.Button(control_bar, text="Install Jedi", command=lambda: self.install_jedi()).pack(side='right', padx=10)
+            tk.Button(ctrl_bar, text="Install Jedi", command=lambda: self.install_jedi()).pack(side='right', padx=10)
 
         self.tab_control = ttk.Notebook(self)
         self.tab_control.pack(expand=1, fill='both')
@@ -138,7 +142,8 @@ class GUI(Tk):
         tab.tab_id = tab_id
         self.tab_control.select(tab)
 
-    def restore_next_char(self, text_widget):
+    @staticmethod
+    def restore_next_char(text_widget):
         if not hasattr(text_widget, "full_code") or text_widget.char_index >= len(text_widget.full_code):
             return  # Nothing left to insert
 
@@ -210,4 +215,10 @@ class GUI(Tk):
         ...
 
     def show_workbooks_autocomplete(self, e):
+        ...
+
+    def check_errors(self):
+        ...
+
+    def stop_code(self):
         ...
