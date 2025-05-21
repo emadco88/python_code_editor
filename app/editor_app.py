@@ -464,7 +464,7 @@ class App(editor_gui.GUI):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    encoding='utf-8'
+                    # encoding='utf-8'
                 )
                 stdout, stderr = self.process.communicate()
 
