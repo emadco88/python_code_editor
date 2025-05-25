@@ -13,6 +13,7 @@ from . import editor_gui
 from .name_checker import NameChecker
 
 MAX_OUTPUT_CHARS = 2000
+MODIFIER_MASK = 0x1 | 0x4 | 0x8
 
 
 class App(editor_gui.GUI):
@@ -561,3 +562,13 @@ class App(editor_gui.GUI):
             messagebox.showwarning("Name Errors", "\n".join(msg_lines))
         else:
             messagebox.showinfo("Check Complete", "No syntax or name errors detected.")
+
+    def ctrl_plus(self, event):
+        if (event.state & 0x4) and not (event.state & 0x1):
+            if event.keycode == 65:
+                event.widget.tag_add("sel", "1.0", "end-1c")
+                event.widget.mark_set("insert", "end-1c")
+                event.widget.see("insert")
+                return 'break'
+            elif event.keycode == 83:
+                self.save_current_code()

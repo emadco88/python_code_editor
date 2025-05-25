@@ -132,6 +132,7 @@ class GUI(Tk):
         text.bind("<Control-Left>", lambda e: self.ctrl_jump_left(e))
         text.bind("<Shift-Control-Left>", lambda e: self.shift_ctrl_jump_left(e))
         text.bind("<BackSpace>", lambda e: self.handle_backspace(e))
+        text.bind("<Control-KeyPress>", lambda e: self.ctrl_plus(e))
 
         output = tk.Text(output_frame, bg="black", fg="lime", font=("Courier", 12))
         output.pack(fill='both', expand=True)
@@ -221,4 +222,7 @@ class GUI(Tk):
         ...
 
     def stop_code(self):
+        ...
+
+    def ctrl_plus(self, e):
         ...
