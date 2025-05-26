@@ -108,8 +108,20 @@ class GUI(Tk):
         output_frame = tk.Frame(tab, height=120)
         output_frame.pack(fill='x', side='bottom')
         output_frame.pack_propagate(False)
+        # Horizontal scrollbar (must be a child of editor_frame, not output_frame)
+        x_scroll = tk.Scrollbar(editor_frame, orient="horizontal")
 
-        text = tk.Text(editor_frame, wrap='word', font=("Courier", 16, "bold"), undo=True)
+        # Create Text widget
+        text = tk.Text(editor_frame,
+                       wrap='none',
+                       font=("Courier", 16, "bold"),
+                       undo=True,
+                       xscrollcommand=x_scroll.set)
+        text.pack(fill='both', expand=True)
+
+        # Pack the scrollbar BELOW the text
+        x_scroll.config(command=text.xview)
+        x_scroll.pack(fill='x', side='bottom')
         text.bind("<Escape>", lambda e, txt=text: self.cancel_restore(txt))
         if animated:
             text.insert("1.0", "")  # Start empty
@@ -133,8 +145,10 @@ class GUI(Tk):
         text.bind("<Shift-Control-Left>", lambda e: self.shift_ctrl_jump_left(e))
         text.bind("<BackSpace>", lambda e: self.handle_backspace(e))
         text.bind("<Control-KeyPress>", lambda e: self.ctrl_plus(e))
-
-        output = tk.Text(output_frame, bg="black", fg="lime", font=("Courier", 12))
+        x_scroll = tk.Scrollbar(output_frame, orient="horizontal")
+        output = tk.Text(output_frame,
+                         bg="black", fg="lime", font=("Courier", 12), wrap="none",
+                         xscrollcommand=x_scroll.set)
         output.pack(fill='both', expand=True)
         output.insert("1.0", "# Output Console\n")
 

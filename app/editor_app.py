@@ -11,6 +11,7 @@ import sys
 import ast
 from . import editor_gui
 from .name_checker import NameChecker
+import re
 
 MAX_OUTPUT_CHARS = 2000
 MODIFIER_MASK = 0x1 | 0x4 | 0x8
@@ -108,7 +109,6 @@ class App(editor_gui.GUI):
             self.sel_anchor = None
 
     def delete_last_word(self, event=None):
-        print("Deleting last word")
         text = self.get_active_text()
         index = text.index("insert")
         line_start = f"{index.split('.')[0]}.0"
@@ -416,6 +416,17 @@ class App(editor_gui.GUI):
         text = self.get_active_text()
         output = self.get_active_output()
         code = text.get("1.0", "end")
+        if re.search(r'\binput\s*\(', code) and not re.search(r'def input\(', code):
+            input_override = (
+                "# ### Auto generated code. #######\n"
+                "# ### Do not remove! #############\n"
+                "from tkinter.simpledialog import askstring\n"
+                "def input(prompt=''):\n"
+                "    return askstring('Input', prompt or 'Enter value:')\n"
+                "##################################\n"
+            )
+            text.insert("1.0", input_override)
+            code = text.get("1.0", "end")
 
         # Clear output and error marks
         output.delete("1.0", "end")
@@ -517,18 +528,34 @@ class App(editor_gui.GUI):
 
     def show_workbooks_autocomplete(self, event=None):
         try:
+            # Get text before cursor
+            text = self.get_active_text()
+            code = text.get("1.0", "insert")
+
+            # Look for pattern: .books('something')
+            match = re.search(r"\.books\(\s*['\"](.*?)['\"]\s*\)", code)
+            if not match:
+                return  # No pattern match; don't show anything
+
+            old_name = match.group(1)
+
+            # Remove the old string from the editor
+            start_index = f"{text.index('insert')} - {len(old_name) + 2}c"
+            end_index = text.index("insert")
+            text.delete(start_index, end_index)
+
+            # Fetch open workbooks
             import xlwings as xw
             workbooks = [b.name for b in xw.books]
+
         except Exception as e:
             workbooks = [f"Error: {str(e)}"]
 
         if not workbooks:
             return
 
-        # Optional: Filter by prefix if text exists
-        # You can also get cursor position and check context if needed
-
-        self.show_autocomplete(event=event, str_complete=workbooks)
+        # Now show menu with `workbooks`
+        self.show_autocomplete(workbooks)
 
     def check_errors(self):
         text = self.get_active_text()
@@ -561,6 +588,8 @@ class App(editor_gui.GUI):
             msg_lines = [f"Possibly undefined name '{n}' at line {l}" for n, l, _ in checker.errors]
             messagebox.showwarning("Name Errors", "\n".join(msg_lines))
         else:
+            text.tag_remove("syntax_error", "1.0", "end")
+            text.tag_remove("exec_error", "1.0", "end")
             messagebox.showinfo("Check Complete", "No syntax or name errors detected.")
 
     def ctrl_plus(self, event):
