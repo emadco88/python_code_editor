@@ -313,6 +313,8 @@ class App(editor_gui.GUI):
         try:
             if str_complete:
                 completions = str_complete
+            elif workbooks := self._get_opened_workbooks():
+                completions = workbooks
             else:
                 prefix = ''
                 code = text.get("1.0", "end")
@@ -526,36 +528,40 @@ class App(editor_gui.GUI):
         python = sys.executable
         os.execl(python, python, *sys.argv)
 
-    def show_workbooks_autocomplete(self, event=None):
+    def _get_opened_workbooks(self):
+        text = self.get_active_text()
+
+        # Get the current line text
+        line_index = text.index("insert").split(".")[0]
+        line_text = text.get(f"{line_index}.0", f"{line_index}.end")
+
+        match = re.search(r"\.books\(\s*['\"](.*?)['\"]\s*\)", line_text)
+        if not match:
+            return  # No match, skip autocomplete
+
+        old_name = match.group(1)
+
+        # Remove old_name inside .books('old_name') → leave .books('')
+        cursor_index = text.search(old_name, f"{line_index}.0", stopindex=f"{line_index}.end")
+        if cursor_index:
+            end_index = text.index(f"{cursor_index}+{len(old_name)}c")
+            text.delete(cursor_index, end_index)
+
+        # Get open workbooks
         try:
-            # Get text before cursor
-            text = self.get_active_text()
-            code = text.get("1.0", "insert")
-
-            # Look for pattern: .books('something')
-            match = re.search(r"\.books\(\s*['\"](.*?)['\"]\s*\)", code)
-            if not match:
-                return  # No pattern match; don't show anything
-
-            old_name = match.group(1)
-
-            # Remove the old string from the editor
-            start_index = f"{text.index('insert')} - {len(old_name) + 2}c"
-            end_index = text.index("insert")
-            text.delete(start_index, end_index)
-
-            # Fetch open workbooks
             import xlwings as xw
             workbooks = [b.name for b in xw.books]
-
         except Exception as e:
-            workbooks = [f"Error: {str(e)}"]
+            print(repr(e))
+            workbooks = []
 
-        if not workbooks:
-            return
+        if workbooks:
+            return workbooks
 
-        # Now show menu with `workbooks`
-        self.show_autocomplete(workbooks)
+    def show_workbooks_autocomplete(self, event=None):
+        workbooks = self._get_opened_workbooks()
+        if workbooks:
+            self.show_autocomplete(event=event, str_complete=workbooks)
 
     def check_errors(self):
         text = self.get_active_text()
