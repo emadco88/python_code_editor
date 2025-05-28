@@ -7,6 +7,28 @@ import time
 import os
 
 
+def customize_text_widget(widget):
+    # Set visual tab width to 4 characters
+    widget.config(tabs="4c")
+    # Make Tab key insert four spaces
+    widget.bind("<Tab>", lambda e: (e.widget.insert("insert", "    "), "break")[1])
+
+
+# Save original Text class
+OriginalText = tk.Text
+
+
+# Override tk.Text with auto-customization
+class PatchedText(OriginalText):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        customize_text_widget(self)
+
+
+# Monkey-patch tk.Text globally
+tk.Text = PatchedText
+
+
 class GUI(Tk):
     def __init__(self):
         super().__init__()
@@ -38,6 +60,10 @@ class GUI(Tk):
         tk.Button(ctrl_bar, text="Open Editor", command=lambda: self.open_new_tab()).pack(side='left', padx=10)
         tk.Button(ctrl_bar, text="Manage Codes", command=lambda: self.manage_codes()).pack(side='left', padx=10)
         tk.Button(ctrl_bar, text="Quit App", command=lambda: self.quit_app()).pack(side='left', padx=10)
+
+        def insert_spaces(event):
+            event.widget.insert(tk.INSERT, "    ")
+            return "break"  # Prevent default tab behavior
 
         try:
             import jedi
