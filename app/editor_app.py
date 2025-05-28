@@ -610,14 +610,14 @@ class App(editor_gui.GUI):
                 return 'break'
             elif event.keycode == 83:
                 self.save_current_code()
-            elif event.keycode == 86:
-                try:
-                    # Get clipboard content
-                    clipboard = event.widget.clipboard_get()
-                    # Replace tabs with 4 spaces
-                    clipboard = clipboard.replace('\t', '    ')
-                    # Insert the modified content at the cursor
-                    event.widget.insert(tk.INSERT, clipboard)
-                except tk.TclError:
-                    pass  # Handle cases when clipboard is empty or unsupported
-                return "break"  # Prevent the default paste behavior
+            # elif event.keycode == 86:
+            #     try:
+            #         # Get clipboard content
+            #         clipboard = event.widget.clipboard_get()
+            #         # Replace tabs with 4 spaces
+            #         clipboard = clipboard.replace('\t', '    ')
+            #         # Insert the modified content at the cursor
+            #         event.widget.insert(tk.INSERT, clipboard)
+            #     except tk.TclError:
+            #         pass  # Handle cases when clipboard is empty or unsupported
+            #     return "break"  # Prevent the default paste behavior
