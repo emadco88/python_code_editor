@@ -418,8 +418,9 @@ class App(editor_gui.GUI):
         text = self.get_active_text()
         output = self.get_active_output()
         code = text.get("1.0", "end")
+        code = code.replace('\t', '    ')
         text.delete("1.0", "end")  # Clear the widget
-        text.insert("1.0", code.replace('\t', '    '))
+        text.insert("1.0", code)
 
         if re.search(r'\binput\s*\(', code) and not re.search(r'def input\(', code):
             input_override = (
