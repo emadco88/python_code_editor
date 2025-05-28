@@ -418,6 +418,9 @@ class App(editor_gui.GUI):
         text = self.get_active_text()
         output = self.get_active_output()
         code = text.get("1.0", "end")
+        text.delete("1.0", "end")  # Clear the widget
+        text.insert("1.0", code.replace('\t', '    '))
+
         if re.search(r'\binput\s*\(', code) and not re.search(r'def input\(', code):
             input_override = (
                 "# ### Auto generated code. #######\n"
@@ -572,7 +575,6 @@ class App(editor_gui.GUI):
         text.tag_configure("syntax_error", underline=True, foreground="red")
 
         code = text.get("1.0", "end-1c")
-
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
