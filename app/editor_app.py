@@ -244,6 +244,11 @@ class App(editor_gui.GUI):
                 if len(output_text) > MAX_OUTPUT_CHARS:
                     trimmed += "\n... (output truncated)"
 
+                try:
+                    trimmed = trimmed.encode('cp1256').decode()
+                except:
+                    pass
+
                 output.insert("end", trimmed)
 
                 output.see("end")

@@ -141,16 +141,18 @@ class GUI(Tk):
         output = tk.Text(output_frame,
                          bg="black", fg="lime", font=("Courier", 12), wrap="none",
                          xscrollcommand=x_scroll_out.set,
-                         yscrollcommand=y_scroll_out.set)
-
-        output.pack(fill='both', expand=True)
-        output.insert("1.0", "# Output Console\n")
-        # Pack the scrollbar BELOW the text
+                         yscrollcommand=y_scroll_out.set, )
+        output.disable_colorify = True
         x_scroll_out.config(command=output.xview)
         y_scroll_out.config(command=output.yview)
 
         x_scroll_out.pack(fill='x', side='bottom')
         y_scroll_out.pack(fill='y', side='right')
+
+        output.pack(fill='both', expand=True)
+
+        output.insert("1.0", "# Output Console\n")
+        # Pack the scrollbar BELOW the text
 
         tab.text = text
         tab.output = output

@@ -5,6 +5,20 @@ import tkinter as tk
 
 # Save original Text class
 from tkinter import messagebox
+import builtins
+import inspect
+from keyword import kwlist
+
+builtin_functions = [name for name, obj in vars(builtins).items()
+                     if inspect.isbuiltin(obj) or inspect.isfunction(obj)]
+
+BUILTIN_FUNCTIONS = set(builtin_functions)
+
+KEYWORDS = set(kwlist)
+
+# Prepare regex
+KEYWORD_PATTERN = re.compile(r'\b(' + '|'.join(re.escape(w) for w in KEYWORDS) + r')\b')
+BUILTIN_PATTERN = re.compile(r'\b(' + '|'.join(re.escape(w) for w in BUILTIN_FUNCTIONS) + r')\b')
 
 OriginalText = tk.Text
 
@@ -13,6 +27,7 @@ OriginalText = tk.Text
 class PatchedText(OriginalText):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         self._colorify_after_id = None
         self.customize_text_widget()
         self.char_count = 0
@@ -48,14 +63,20 @@ class PatchedText(OriginalText):
         self.bind("<Shift-Control-Left>", lambda e: self.shift_ctrl_jump_left(e))
         self.bind("<BackSpace>", lambda e: self.handle_backspace(e))
         self.bind("<Control-KeyPress>", lambda e: self.ctrl_plus(e))
-        self.tag_configure("comment", foreground="#808080")  # PyCharm-style blueish
-        self.tag_configure("keyword", foreground="#0000BB")  # PyCharm-style blueish
-        self.bind("<KeyRelease>", lambda e: self.after_colorify())
+
+        # trigger colorify
         self.bind("<MouseWheel>", lambda e: self.after_colorify())
         self.bind("<Button-4>", lambda e: self.after_colorify())  # For Linux scroll up
         self.bind("<Button-5>", lambda e: self.after_colorify())  # For Linux scroll down
         self.bind("<Visibility>", lambda e: self.after_colorify())
         self.bind("<<Modified>>", lambda e: self.after_colorify())  # optional, on edit
+        self.bind("<KeyRelease>", lambda e: self.after_colorify())
+
+        # Tags
+        self.tag_configure("comment", foreground="#808080")  # PyCharm-style blueish
+        self.tag_configure("keyword", foreground="#0000BB")  # PyCharm-style blueish
+        self.tag_configure("string", foreground="green")
+        self.tag_configure("builtin", foreground="#B58900")  # Yellowish or orange
 
     def install_jedi(self):
         try:
@@ -105,6 +126,8 @@ class PatchedText(OriginalText):
 
     def ctrl_plus(self, event):
         # print(event.keycode)
+
+        self.after_colorify()
         if (event.state & 0x4) and not (event.state & 0x1):
             if event.keycode == 65:
                 event.widget.tag_add("sel", "1.0", "end-1c")
@@ -418,12 +441,14 @@ class PatchedText(OriginalText):
             self._colorify_after_id = None
 
         text = self.get_active_text()
-        if not text:
+        if not text or getattr(text, 'disable_colorify', False):
             return
 
         # Clear old tags
         text.tag_remove("comment", "1.0", "end")
         text.tag_remove("keyword", "1.0", "end")
+        text.tag_remove("string", "1.0", "end")
+        text.tag_remove("builtin", "1.0", "end")
 
         # Determine visible area
         try:
@@ -436,14 +461,6 @@ class PatchedText(OriginalText):
             start_line = 1
             end_line = int(text.index("end-1c").split('.')[0])
 
-        # Prepare regex
-        keywords = {
-            'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
-            'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in',
-            'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield'
-        }
-        keyword_pattern = re.compile(r'\b(' + '|'.join(re.escape(w) for w in keywords) + r')\b')
-
         # Highlight only visible lines
         for i in range(start_line, end_line + 1):
             line = text.get(f"{i}.0", f"{i}.end")
@@ -455,16 +472,30 @@ class PatchedText(OriginalText):
                 end_index = f"{i}.end"
                 text.tag_add("comment", start_index, end_index)
 
-            # Highlight keywords (skip content after #)
+            # Highlight KEYWORDS (skip content after #)
             comment_pos = line.find("#")
             scan_line = line if comment_pos == -1 else line[:comment_pos]
 
-            for match in keyword_pattern.finditer(scan_line):
+            for match in KEYWORD_PATTERN.finditer(scan_line):
                 start_col = match.start()
                 end_col = match.end()
                 start_idx = f"{i}.{start_col}"
                 end_idx = f"{i}.{end_col}"
                 text.tag_add("keyword", start_idx, end_idx)
+
+            for match in BUILTIN_PATTERN.finditer(scan_line):
+                start_col = match.start()
+                end_col = match.end()
+                start_idx = f"{i}.{start_col}"
+                end_idx = f"{i}.{end_col}"
+                text.tag_add("builtin", start_idx, end_idx)
+
+            for match in re.finditer(r'(\'(?:\\.|[^\\\'])*?\'|"(?:\\.|[^\\"])*?")', scan_line):
+                start_col = match.start()
+                end_col = match.end()
+                start_idx = f"{i}.{start_col}"
+                end_idx = f"{i}.{end_col}"
+                text.tag_add("string", start_idx, end_idx)
 
     def after_colorify(self, delay=100):
         if self._colorify_after_id:
