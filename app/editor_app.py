@@ -246,8 +246,9 @@ class App(editor_gui.GUI):
 
                 try:
                     trimmed = trimmed.encode('cp1256').decode()
-                except:
-                    pass
+                except Exception as ex:
+                    print(repr(ex))
+                    print("Failed to encode, skipping ...")
 
                 output.insert("end", trimmed)
 
