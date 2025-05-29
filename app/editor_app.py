@@ -169,9 +169,11 @@ class App(editor_gui.GUI):
         text = self.get_active_text()
         output = self.get_active_output()
         code = text.get("1.0", "end")
-        code = code.replace('\t', '    ')
-        text.delete("1.0", "end")  # Clear the widget
-        text.insert("1.0", code)
+        if '\t' in code:
+            code = code.replace('\t', '    ')
+            text.delete("1.0", "end")  # Clear the widget
+            text.insert("1.0", code)
+            text.colrify()
 
         if re.search(r'\binput\s*\(', code) and not re.search(r'def input\(', code):
             input_override = (
@@ -260,6 +262,7 @@ class App(editor_gui.GUI):
 
         self.thread = threading.Thread(target=execute)
         self.thread.start()
+        text.colorify()
 
     def stop_code(self):
         if self.process and self.process.poll() is None:

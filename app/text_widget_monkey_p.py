@@ -42,6 +42,10 @@ class PatchedText(OriginalText):
         self.bind("<Shift-Control-Left>", lambda e: self.shift_ctrl_jump_left(e))
         self.bind("<BackSpace>", lambda e: self.handle_backspace(e))
         self.bind("<Control-KeyPress>", lambda e: self.ctrl_plus(e))
+        # Existing bindings...
+        self.tag_configure("comment", foreground="#808080")  # PyCharm-style blueish
+        self.tag_configure("keyword", foreground="#0000BB")  # PyCharm-style blueish
+        self.bind("<KeyRelease>", lambda e: self.colorify())
 
     def install_jedi(self):
         try:
@@ -396,6 +400,39 @@ class PatchedText(OriginalText):
         if word_start < word_end:
             text.delete(f"insert-{word_end - word_start}c", "insert")
         # return "break"
+
+    def colorify(self):
+        text = self.get_active_text()
+        if not text:
+            return
+
+        text.tag_remove("comment", "1.0", "end")  # Clear old highlights
+        text.tag_remove("keyword", "1.0", "end")
+        lines = text.get("1.0", "end-1c").split("\n")
+
+        for i, line in enumerate(lines, start=1):
+            stripped = line.lstrip()
+            if stripped.startswith("#"):
+                start_index = f"{i}.0+{len(line) - len(stripped)}c"
+                end_index = f"{i}.end"
+                text.tag_add("comment", start_index, end_index)
+
+        keywords = {'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
+                    'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in',
+                    'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield'}
+
+        # Match full words only using regex \b
+        for i, line in enumerate(text.get("1.0", "end-1c").splitlines(), start=1):
+            # Only scan up to the first '#' in the line
+            comment_pos = line.find("#")
+            scan_line = line if comment_pos == -1 else line[:comment_pos]
+
+            for match in re.finditer(r'\b(' + '|'.join(re.escape(word) for word in keywords) + r')\b', scan_line):
+                start_col = match.start()
+                end_col = match.end()
+                start_idx = f"{i}.{start_col}"
+                end_idx = f"{i}.{end_col}"
+                text.tag_add("keyword", start_idx, end_idx)
 
 
 # Monkey-patch tk.Text globally
