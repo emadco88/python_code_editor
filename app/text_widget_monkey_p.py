@@ -90,23 +90,46 @@ class PatchedText(OriginalText):
             return workbooks
 
     def ctrl_plus(self, event):
+        # print(event.keycode)
         if (event.state & 0x4) and not (event.state & 0x1):
             if event.keycode == 65:
                 event.widget.tag_add("sel", "1.0", "end-1c")
                 event.widget.mark_set("insert", "end-1c")
                 event.widget.see("insert")
                 return 'break'
-            # elif event.keycode == 86:
-            #     try:
-            #         # Get clipboard content
-            #         clipboard = event.widget.clipboard_get()
-            #         # Replace tabs with 4 spaces
-            #         clipboard = clipboard.replace('\t', '    ')
-            #         # Insert the modified content at the cursor
-            #         event.widget.insert(tk.INSERT, clipboard)
-            #     except tk.TclError:
-            #         pass  # Handle cases when clipboard is empty or unsupported
-            #     return "break"  # Prevent the default paste behavior
+            if event.keycode in (191, 51):  # Ctrl+/ or Ctrl+3
+                text = self.get_active_text()
+
+                try:
+                    sel_start = text.index("sel.first")
+                    sel_end = text.index("sel.last")
+                    start_line = int(sel_start.split('.')[0])
+                    end_line = int(sel_end.split('.')[0])
+                except tk.TclError:
+                    # No selection → use current line
+                    line = int(text.index("insert").split('.')[0])
+                    start_line = end_line = line
+
+                # First check: do all lines start with '#'
+                all_commented = True
+                for line in range(start_line, end_line + 1):
+                    line_text = text.get(f"{line}.0", f"{line}.end")
+                    if not line_text.lstrip().startswith("#"):
+                        all_commented = False
+                        break
+
+                for line in range(start_line, end_line + 1):
+                    line_start = f"{line}.0"
+                    if all_commented:
+                        # Uncomment: remove first #
+                        idx = text.search(r'#', line_start, f"{line}.end", regexp=True)
+                        if idx:
+                            text.delete(idx)
+                    else:
+                        # Comment: insert #
+                        text.insert(line_start, "#")
+
+                return 'break'
 
     def show_workbooks_autocomplete(self, event=None):
         workbooks = self._get_opened_workbooks()
@@ -167,6 +190,18 @@ class PatchedText(OriginalText):
             elif workbooks := self._get_opened_workbooks():
                 completions = workbooks
             else:
+                # Check if there is a selection
+                try:
+                    sel_start = text.index("sel.first")
+                    sel_end = text.index("sel.last")
+                    start_line = int(sel_start.split('.')[0])
+                    end_line = int(sel_end.split('.')[0])
+                    for line in range(start_line, end_line + 1):
+                        text.insert(f"{line}.0", "    ")
+                    return "break"  # ← Don't try autocomplete if indenting block
+                except tk.TclError:
+                    pass  # No selection, continue with normal autocomplete
+
                 # Get full code
                 code = text.get("1.0", "end")
                 line_str, col_str = text.index("insert").split(".")
@@ -183,8 +218,8 @@ class PatchedText(OriginalText):
 
                 # If nothing before cursor or line is empty → insert four spaces
                 if not prefix.strip():
-                    event.widget.insert("insert", "    ")
-                    return "break"  # ← return None lets default Tab behavior happen
+                    text.insert("insert", "    ")
+                    return "break"
 
                 # Jedi autocomplete
                 if not self.jedi:
