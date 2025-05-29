@@ -262,7 +262,6 @@ class App(editor_gui.GUI):
 
         self.thread = threading.Thread(target=execute)
         self.thread.start()
-        text.colorify()
 
     def stop_code(self):
         if self.process and self.process.poll() is None:

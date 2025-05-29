@@ -13,6 +13,7 @@ OriginalText = tk.Text
 class PatchedText(OriginalText):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._colorify_after_id = None
         self.customize_text_widget()
         self.char_count = 0
         self.used_paste = False
@@ -25,6 +26,11 @@ class PatchedText(OriginalText):
             jedi = None
             self.jedi = None
             print("Jedi is not installed")
+
+    def insert(self, index, chars, *args):
+        result = super().insert(index, chars, *args)
+        self.after_colorify()  # or self.colorify() if you want immediate
+        return result
 
     def customize_text_widget(self):
         # Set visual tab width to 4 characters
@@ -42,10 +48,14 @@ class PatchedText(OriginalText):
         self.bind("<Shift-Control-Left>", lambda e: self.shift_ctrl_jump_left(e))
         self.bind("<BackSpace>", lambda e: self.handle_backspace(e))
         self.bind("<Control-KeyPress>", lambda e: self.ctrl_plus(e))
-        # Existing bindings...
         self.tag_configure("comment", foreground="#808080")  # PyCharm-style blueish
         self.tag_configure("keyword", foreground="#0000BB")  # PyCharm-style blueish
-        self.bind("<KeyRelease>", lambda e: self.colorify())
+        self.bind("<KeyRelease>", lambda e: self.after_colorify())
+        self.bind("<MouseWheel>", lambda e: self.after_colorify())
+        self.bind("<Button-4>", lambda e: self.after_colorify())  # For Linux scroll up
+        self.bind("<Button-5>", lambda e: self.after_colorify())  # For Linux scroll down
+        self.bind("<Visibility>", lambda e: self.after_colorify())
+        self.bind("<<Modified>>", lambda e: self.after_colorify())  # optional, on edit
 
     def install_jedi(self):
         try:
@@ -402,37 +412,64 @@ class PatchedText(OriginalText):
         # return "break"
 
     def colorify(self):
+        # Cancel any pending reschedules
+        if self._colorify_after_id:
+            self.after_cancel(self._colorify_after_id)
+            self._colorify_after_id = None
+
         text = self.get_active_text()
         if not text:
             return
 
-        text.tag_remove("comment", "1.0", "end")  # Clear old highlights
+        # Clear old tags
+        text.tag_remove("comment", "1.0", "end")
         text.tag_remove("keyword", "1.0", "end")
-        lines = text.get("1.0", "end-1c").split("\n")
 
-        for i, line in enumerate(lines, start=1):
+        # Determine visible area
+        try:
+            first_visible = text.index("@0,0")
+            last_visible = text.index(f"@0,{text.winfo_height()}")
+            start_line = int(first_visible.split('.')[0])
+            end_line = int(last_visible.split('.')[0])
+        except Exception:
+            # Fallback to all lines
+            start_line = 1
+            end_line = int(text.index("end-1c").split('.')[0])
+
+        # Prepare regex
+        keywords = {
+            'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
+            'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in',
+            'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield'
+        }
+        keyword_pattern = re.compile(r'\b(' + '|'.join(re.escape(w) for w in keywords) + r')\b')
+
+        # Highlight only visible lines
+        for i in range(start_line, end_line + 1):
+            line = text.get(f"{i}.0", f"{i}.end")
             stripped = line.lstrip()
+
+            # Highlight comment
             if stripped.startswith("#"):
                 start_index = f"{i}.0+{len(line) - len(stripped)}c"
                 end_index = f"{i}.end"
                 text.tag_add("comment", start_index, end_index)
 
-        keywords = {'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue',
-                    'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in',
-                    'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield'}
-
-        # Match full words only using regex \b
-        for i, line in enumerate(text.get("1.0", "end-1c").splitlines(), start=1):
-            # Only scan up to the first '#' in the line
+            # Highlight keywords (skip content after #)
             comment_pos = line.find("#")
             scan_line = line if comment_pos == -1 else line[:comment_pos]
 
-            for match in re.finditer(r'\b(' + '|'.join(re.escape(word) for word in keywords) + r')\b', scan_line):
+            for match in keyword_pattern.finditer(scan_line):
                 start_col = match.start()
                 end_col = match.end()
                 start_idx = f"{i}.{start_col}"
                 end_idx = f"{i}.{end_col}"
                 text.tag_add("keyword", start_idx, end_idx)
+
+    def after_colorify(self, delay=100):
+        if self._colorify_after_id:
+            self.after_cancel(self._colorify_after_id)
+        self._colorify_after_id = self.after(delay, self.colorify)
 
 
 # Monkey-patch tk.Text globally

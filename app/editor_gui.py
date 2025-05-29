@@ -40,10 +40,6 @@ class GUI(Tk):
         tk.Button(ctrl_bar, text="Manage Codes", command=lambda: self.manage_codes()).pack(side='left', padx=10)
         tk.Button(ctrl_bar, text="Quit App", command=lambda: self.quit_app()).pack(side='left', padx=10)
 
-        def insert_spaces(event):
-            event.widget.insert(tk.INSERT, "    ")
-            return "break"  # Prevent default tab behavior
-
         self.tab_control = ttk.Notebook(self)
         self.tab_control.pack(expand=1, fill='both')
 
@@ -105,23 +101,26 @@ class GUI(Tk):
 
         editor_frame = tk.Frame(tab)
         editor_frame.pack(fill='both', expand=True)
-        output_frame = tk.Frame(tab, height=120)
-        output_frame.pack(fill='x', side='bottom')
-        output_frame.pack_propagate(False)
-        # Horizontal scrollbar (must be a child of editor_frame, not output_frame)
-        x_scroll = tk.Scrollbar(editor_frame, orient="horizontal")
 
-        # Create Text widget
+        x_scroll_edit = tk.Scrollbar(editor_frame, orient="horizontal")
+        y_scroll_edit = tk.Scrollbar(editor_frame, orient="vertical")
+
         text = tk.Text(editor_frame,
                        wrap='none',
                        font=("Courier", 16, "bold"),
                        undo=True,
-                       xscrollcommand=x_scroll.set)
+                       xscrollcommand=x_scroll_edit.set,
+                       yscrollcommand=y_scroll_edit.set)
+
+        # Correct scrollbar config
+        x_scroll_edit.config(command=text.xview)
+        y_scroll_edit.config(command=lambda *args: (text.yview(*args), text.after_colorify()))
+
+        # Packing order
+        x_scroll_edit.pack(fill='x', side='bottom')
+        y_scroll_edit.pack(fill='y', side='right')
         text.pack(fill='both', expand=True)
 
-        # Pack the scrollbar BELOW the text
-        x_scroll.config(command=text.xview)
-        x_scroll.pack(fill='x', side='bottom')
         text.bind("<Escape>", lambda e, txt=text: self.cancel_restore(txt))
         if animated:
             text.insert("1.0", "")  # Start empty
@@ -131,14 +130,27 @@ class GUI(Tk):
             text.bind("<Escape>", lambda e, txt=text: self.cancel_restore(txt))
         else:
             text.insert("1.0", initial_code)
+        ###############################################################
+        output_frame = tk.Frame(tab, height=120)
+        output_frame.pack(fill='x', side='bottom')
+        output_frame.pack_propagate(False)
 
-        text.pack(fill='both', expand=True)
-        x_scroll = tk.Scrollbar(output_frame, orient="horizontal")
+        x_scroll_out = tk.Scrollbar(output_frame, orient="horizontal")
+        y_scroll_out = tk.Scrollbar(output_frame, orient='vertical')
+
         output = tk.Text(output_frame,
                          bg="black", fg="lime", font=("Courier", 12), wrap="none",
-                         xscrollcommand=x_scroll.set)
+                         xscrollcommand=x_scroll_out.set,
+                         yscrollcommand=y_scroll_out.set)
+
         output.pack(fill='both', expand=True)
         output.insert("1.0", "# Output Console\n")
+        # Pack the scrollbar BELOW the text
+        x_scroll_out.config(command=output.xview)
+        y_scroll_out.config(command=output.yview)
+
+        x_scroll_out.pack(fill='x', side='bottom')
+        y_scroll_out.pack(fill='y', side='right')
 
         tab.text = text
         tab.output = output
