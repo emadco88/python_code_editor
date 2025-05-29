@@ -1,0 +1,367 @@
+import re
+import subprocess
+import sys
+import tkinter as tk
+
+# Save original Text class
+from tkinter import messagebox
+
+OriginalText = tk.Text
+
+
+# Override tk.Text with auto-customization
+class PatchedText(OriginalText):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.customize_text_widget()
+        self.char_count = 0
+        self.used_paste = False
+        self.active_menu = None
+        self.local_scope = {}
+        try:
+            import jedi
+            self.jedi = jedi
+        except ImportError:
+            jedi = None
+            self.jedi = None
+            print("Jedi is not installed")
+
+    def customize_text_widget(self):
+        # Set visual tab width to 4 characters
+        self.config(tabs="4c")
+        # Make Tab key insert four spaces
+        self.bind("<Control-z>", lambda e: self.edit_undo())
+        self.bind("<Escape>", lambda e: self.hide_autocomplete_menu(e))
+        self.bind("<KeyPress>", lambda e: self.autoclose_pairs(e))
+        self.bind("<Tab>", lambda e: self.show_autocomplete(e))
+        self.bind("<Control-BackSpace>", lambda e: self.delete_last_word(e))
+        self.bind("<Control-space>", lambda e: self.show_workbooks_autocomplete(e))
+        self.bind("<Control-Right>", lambda e: self.ctrl_jump_right(e))
+        self.bind("<Shift-Control-Right>", lambda e: self.shift_ctrl_jump_right(e))
+        self.bind("<Control-Left>", lambda e: self.ctrl_jump_left(e))
+        self.bind("<Shift-Control-Left>", lambda e: self.shift_ctrl_jump_left(e))
+        self.bind("<BackSpace>", lambda e: self.handle_backspace(e))
+        self.bind("<Control-KeyPress>", lambda e: self.ctrl_plus(e))
+
+    def install_jedi(self):
+        try:
+            subprocess.run([sys.executable, "-m", "pip", "install", "jedi"], check=True)
+            # messagebox.showinfo("Success", "Jedi installed successfully. Restarting app...")
+            import jedi
+            self.jedi = jedi
+            # self.restart_app()
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Error", f"Failed to install Jedi:\n{e}")
+
+    def get_active_text(self):
+        widget = self.focus_get()
+        if isinstance(widget, tk.Text):
+            return widget
+        return None
+
+    def _get_opened_workbooks(self):
+        text = self.get_active_text()
+
+        # Get the current line text
+        line_index = text.index("insert").split(".")[0]
+        line_text = text.get(f"{line_index}.0", f"{line_index}.end")
+
+        match = re.search(r"\.books\(\s*['\"](.*?)['\"]\s*\)", line_text)
+        if not match:
+            return  # No match, skip autocomplete
+
+        old_name = match.group(1)
+
+        # Remove old_name inside .books('old_name') → leave .books('')
+        cursor_index = text.search(old_name, f"{line_index}.0", stopindex=f"{line_index}.end")
+        if cursor_index:
+            end_index = text.index(f"{cursor_index}+{len(old_name)}c")
+            text.delete(cursor_index, end_index)
+
+        # Get open workbooks
+        try:
+            import xlwings as xw
+            workbooks = [b.name for b in xw.books]
+        except Exception as e:
+            print(repr(e))
+            workbooks = []
+
+        if workbooks:
+            return workbooks
+
+    def ctrl_plus(self, event):
+        if (event.state & 0x4) and not (event.state & 0x1):
+            if event.keycode == 65:
+                event.widget.tag_add("sel", "1.0", "end-1c")
+                event.widget.mark_set("insert", "end-1c")
+                event.widget.see("insert")
+                return 'break'
+            # elif event.keycode == 86:
+            #     try:
+            #         # Get clipboard content
+            #         clipboard = event.widget.clipboard_get()
+            #         # Replace tabs with 4 spaces
+            #         clipboard = clipboard.replace('\t', '    ')
+            #         # Insert the modified content at the cursor
+            #         event.widget.insert(tk.INSERT, clipboard)
+            #     except tk.TclError:
+            #         pass  # Handle cases when clipboard is empty or unsupported
+            #     return "break"  # Prevent the default paste behavior
+
+    def show_workbooks_autocomplete(self, event=None):
+        workbooks = self._get_opened_workbooks()
+        if workbooks:
+            self.show_autocomplete(event=event, str_complete=workbooks)
+
+    def autoclose_pairs(self, event):
+        text = self.get_active_text()
+        pairs = {'(': ')', '[': ']', '{': '}', '"': '"', "'": "'"}
+        # open_chars = pairs.keys()
+        close_chars = pairs.values()
+
+        start = end = None
+        try:
+            start = text.index("sel.first")
+            end = text.index("sel.last")
+            selected = True
+        except tk.TclError:
+            selected = False
+
+        index = text.index("insert")
+        next_char = text.get(index)
+        if event.char in close_chars:
+            if next_char == event.char:
+                text.mark_set("insert", f"{index}+1c")
+                return "break"
+
+        if event.char in pairs:
+            if selected:
+                selected_text = text.get(start, end)
+                text.delete(start, end)
+                text.insert(start, event.char + selected_text + pairs[event.char])
+                text.mark_set("insert", f"{start}+{len(event.char + selected_text) + 1}c")
+                return "break"
+
+            text.insert(index, event.char + pairs[event.char])
+            text.mark_set("insert", f"{index}+1c")
+            return "break"
+
+        return None
+
+    def hide_autocomplete_menu(self, event=None):
+        if self.active_menu:
+            self.active_menu.unpost()
+            self.active_menu = None
+        return "break"
+
+    def show_autocomplete(self, event=None, str_complete=None):
+        text = self.get_active_text()
+
+        if self.active_menu:
+            self.active_menu.unpost()
+            self.active_menu = None
+
+        try:
+            if str_complete:
+                completions = str_complete
+            elif workbooks := self._get_opened_workbooks():
+                completions = workbooks
+            else:
+                # Get full code
+                code = text.get("1.0", "end")
+                line_str, col_str = text.index("insert").split(".")
+                line = int(line_str)
+                column = int(col_str)
+
+                # Get text from start of the line to cursor
+                current_line = text.get(f"{line}.0", f"{line}.{column}")
+                prefix = ''
+                for char in reversed(current_line):
+                    if not (char.isalnum() or char == '_'):
+                        break
+                    prefix = char + prefix
+
+                # If nothing before cursor or line is empty → insert four spaces
+                if not prefix.strip():
+                    event.widget.insert("insert", "    ")
+                    return "break"  # ← return None lets default Tab behavior happen
+
+                # Jedi autocomplete
+                if not self.jedi:
+                    print("jedi not installed, cancel autocompletion ...")
+                    return "break"
+                script = self.jedi.Script(code=code, path="script.py")
+                completions = script.complete(line, column)
+                completions = [
+                    x.name for x in completions
+                    if not x.name.startswith("__") and x.name.startswith(prefix)
+                ]
+
+            if not completions:
+                return "break"
+
+            completions.sort(key=lambda x: x.lower())
+
+            if len(completions) == 1:
+                return self.insert_completion(completions[0], text=text)
+
+            menu = tk.Menu(self, tearoff=0)
+            self.active_menu = menu
+            for comp in completions:
+                menu.add_command(
+                    label=comp,
+                    command=lambda complete_name=comp, m=menu: self.insert_completion(complete_name, m))
+
+            bbox = text.bbox("insert")
+            if not bbox:
+                return "break"
+            x, y, _, _ = bbox
+            x += text.winfo_rootx()
+            y += text.winfo_rooty() + 20
+            menu.post(x, y)
+            return "break"
+        except Exception as e:
+            print("Autocomplete error:", e)
+            return "break"
+
+    def insert_completion(self, name, menu=None, text=None):
+        text = text or self.get_active_text()
+        index = text.index("insert")
+        line_start = f"{index.split('.')[0]}.0"
+        current_line = text.get(line_start, index)
+        prefix = ''
+        for char in reversed(current_line):
+            if not (char.isalnum() or char == '_'):
+                break
+            prefix = char + prefix
+        if prefix:
+            text.delete(f"insert-{len(prefix)}c", "insert")
+        text.insert("insert", name)
+        if menu:
+            menu.unpost()
+        return "break"
+
+    def handle_backspace(self, event=None):
+        text = self.get_active_text()
+        cursor_index = text.index("insert")
+        try:
+            sel_start = text.index("sel.first")
+            sel_end = text.index("sel.last")
+            if sel_start != sel_end:
+                return  # do nothing, allow default behavior
+        except tk.TclError:
+            pass  # no selection
+        pairs = {'(': ')', '[': ']', '{': '}', '"': '"', "'": "'"}
+        open_chars = pairs.keys()
+        index = text.index("insert")
+        next_char = text.get(index)
+
+        if event.keysym == "BackSpace":
+            prev_char = text.get(f"{index}-1c")
+            if prev_char in open_chars and next_char == pairs[prev_char]:
+                text.delete(f"{index}-1c", f"{index}+1c")
+                return "break"
+
+        # Get current line start to cursor
+        line_start = f"{cursor_index.split('.')[0]}.0"
+        before_cursor = text.get(line_start, cursor_index)
+
+        # If last 4 characters before cursor are spaces
+        if before_cursor.endswith(" " * 4):
+            text.delete(f"{cursor_index}-4c", cursor_index)
+            return "break"
+
+    def ctrl_jump_right(self, event=None):
+        self._jump_word(direction="right")
+        return "break"
+
+    def ctrl_jump_left(self, event=None):
+        self._jump_word(direction="left")
+        return "break"
+
+    def shift_ctrl_jump_right(self, event=None):
+        text = self.get_active_text()
+        if self.sel_anchor is None:
+            self.sel_anchor = text.index("insert")  # ✅ Capture BEFORE jumping
+        self._jump_word("right", select=True)
+        return "break"
+
+    def shift_ctrl_jump_left(self, event=None):
+        text = self.get_active_text()
+        if self.sel_anchor is None:
+            self.sel_anchor = text.index("insert")  # ✅ Capture BEFORE jumping
+        self._jump_word("left", select=True)
+        return "break"
+
+    def _jump_word(self, direction="right", select=None):
+        text = self.get_active_text()
+        cur = text.index("insert")
+
+        if direction == "right":
+            line, col = map(int, cur.split("."))
+            end = text.index(f"{line}.end")
+            chunk = text.get(cur, end)
+
+            i = 0
+            while i < len(chunk) and chunk[i].isspace():
+                i += 1
+            while i < len(chunk) and (chunk[i].isalnum() or chunk[i] == "_"):
+                i += 1
+
+            new_index = text.index(f"{cur}+{i or 1}c")
+
+        else:
+            line, col = map(int, cur.split("."))
+            start = f"{line}.0"
+            chunk = text.get(start, cur)
+
+            i = len(chunk)
+            while i > 0 and chunk[i - 1].isspace():
+                i -= 1
+            while i > 0 and (chunk[i - 1].isalnum() or chunk[i - 1] == "_"):
+                i -= 1
+
+            new_index = text.index(f"{start}+{i}c") if i != len(chunk) else text.index(f"{cur}-1c")
+
+        if select:
+            # ✅ Always move the cursor first
+            text.mark_set("insert", new_index)
+            text.see(new_index)
+
+            # ✅ Only set anchor the first time
+            if self.sel_anchor is None:
+                self.sel_anchor = cur
+
+            # ✅ Normalize selection range
+            start = self.sel_anchor
+            end = new_index
+            if text.compare(start, ">", end):
+                start, end = end, start
+
+            text.tag_remove("sel", "1.0", "end")
+            text.tag_add("sel", start, end)
+        else:
+            text.tag_remove("sel", "1.0", "end")
+            text.mark_set("insert", new_index)
+            text.see(new_index)
+            self.sel_anchor = None
+
+    def delete_last_word(self, event=None):
+        text = self.get_active_text()
+        index = text.index("insert")
+        line_start = f"{index.split('.')[0]}.0"
+        current_line = text.get(line_start, index)
+
+        # Walk backward to find word start
+        word_end = len(current_line)
+        word_start = word_end
+        while word_start > 0 and (current_line[word_start - 1].isalnum() or current_line[word_start - 1] == "_"):
+            word_start -= 1
+
+        if word_start < word_end:
+            text.delete(f"insert-{word_end - word_start}c", "insert")
+        # return "break"
+
+
+# Monkey-patch tk.Text globally
+tk.Text = PatchedText

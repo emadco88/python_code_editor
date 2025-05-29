@@ -7,28 +7,6 @@ import time
 import os
 
 
-def customize_text_widget(widget):
-    # Set visual tab width to 4 characters
-    widget.config(tabs="4c")
-    # Make Tab key insert four spaces
-    widget.bind("<Tab>", lambda e: (e.widget.insert("insert", "    "), "break")[1])
-
-
-# Save original Text class
-OriginalText = tk.Text
-
-
-# Override tk.Text with auto-customization
-class PatchedText(OriginalText):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        customize_text_widget(self)
-
-
-# Monkey-patch tk.Text globally
-tk.Text = PatchedText
-
-
 class GUI(Tk):
     def __init__(self):
         super().__init__()
@@ -47,6 +25,7 @@ class GUI(Tk):
         self.local_scope = {}
 
         ctrl_bar = tk.Frame(self)
+        self.ctrl_bar = ctrl_bar
         ctrl_bar.pack(side='top', anchor='w', fill='x')
         tk.Label(ctrl_bar, text="Font Size:").pack(side='left', padx=5, pady=5)
         tk.Button(ctrl_bar, text="+", command=lambda: self.increase_font(), width=2).pack(side='left')
@@ -64,11 +43,6 @@ class GUI(Tk):
         def insert_spaces(event):
             event.widget.insert(tk.INSERT, "    ")
             return "break"  # Prevent default tab behavior
-
-        try:
-            import jedi
-        except ImportError:
-            tk.Button(ctrl_bar, text="Install Jedi", command=lambda: self.install_jedi()).pack(side='right', padx=10)
 
         self.tab_control = ttk.Notebook(self)
         self.tab_control.pack(expand=1, fill='both')
@@ -159,18 +133,6 @@ class GUI(Tk):
             text.insert("1.0", initial_code)
 
         text.pack(fill='both', expand=True)
-        text.bind("<Control-z>", lambda e: text.edit_undo())
-        text.bind("<Escape>", lambda e: self.hide_autocomplete_menu(e))
-        text.bind("<KeyPress>", lambda e: self.autoclose_pairs(e))
-        text.bind("<Tab>", lambda e: self.show_autocomplete(e))
-        text.bind("<Control-BackSpace>", lambda e: self.delete_last_word(e))
-        text.bind("<Control-space>", lambda e: self.show_workbooks_autocomplete(e))
-        text.bind("<Control-Right>", lambda e: self.ctrl_jump_right(e))
-        text.bind("<Shift-Control-Right>", lambda e: self.shift_ctrl_jump_right(e))
-        text.bind("<Control-Left>", lambda e: self.ctrl_jump_left(e))
-        text.bind("<Shift-Control-Left>", lambda e: self.shift_ctrl_jump_left(e))
-        text.bind("<BackSpace>", lambda e: self.handle_backspace(e))
-        text.bind("<Control-KeyPress>", lambda e: self.ctrl_plus(e))
         x_scroll = tk.Scrollbar(output_frame, orient="horizontal")
         output = tk.Text(output_frame,
                          bg="black", fg="lime", font=("Courier", 12), wrap="none",
