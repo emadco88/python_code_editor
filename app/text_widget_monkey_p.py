@@ -94,35 +94,42 @@ class PatchedText(OriginalText):
             return widget
         return None
 
+    import re
+
     def _get_opened_workbooks(self):
         text = self.get_active_text()
 
-        # Get the current line text
-        line_index = text.index("insert").split(".")[0]
-        line_text = text.get(f"{line_index}.0", f"{line_index}.end")
+        # Get the current line and index
+        cursor_index = text.index("insert")
+        line_no = cursor_index.split(".")[0]
+        line_text = text.get(f"{line_no}.0", f"{line_no}.end")
+        cursor_col = int(cursor_index.split(".")[1])
 
-        match = re.search(r"\.books\(\s*['\"](.*?)['\"]\s*\)", line_text)
-        if not match:
-            return  # No match, skip autocomplete
+        # Search for `.books('...')` pattern
+        for match in re.finditer(r"\.books\(\s*(['\"])(.*?)\1\s*\)", line_text):
+            quote_start = match.start(2)
+            quote_end = match.end(2)
 
-        old_name = match.group(1)
+            # If cursor is between quotes, continue
+            if quote_start <= cursor_col <= quote_end:
+                old_name = match.group(2)
 
-        # Remove old_name inside .books('old_name') → leave .books('')
-        cursor_index = text.search(old_name, f"{line_index}.0", stopindex=f"{line_index}.end")
-        if cursor_index:
-            end_index = text.index(f"{cursor_index}+{len(old_name)}c")
-            text.delete(cursor_index, end_index)
+                # Delete the old name in the widget
+                start_idx = f"{line_no}.{quote_start}"
+                end_idx = f"{line_no}.{quote_end}"
+                text.delete(start_idx, end_idx)
 
-        # Get open workbooks
-        try:
-            import xlwings as xw
-            workbooks = [b.name for b in xw.books]
-        except Exception as e:
-            print(repr(e))
-            workbooks = []
+                # Get open workbooks
+                try:
+                    import xlwings as xw
+                    workbooks = [b.name for b in xw.books]
+                except Exception as e:
+                    print(repr(e))
+                    workbooks = []
 
-        if workbooks:
-            return workbooks
+                return workbooks  # Only return if matched and inside quotes
+
+        return  # Cursor not inside any match, do nothing
 
     def ctrl_plus(self, event):
         # print(event.keycode)
