@@ -448,6 +448,7 @@ class PatchedText(OriginalText):
             self._colorify_after_id = None
 
         text = self.get_active_text()
+        code = text.get("1.0", "end")
         if not text or getattr(text, 'disable_colorify', False):
             return
 
@@ -503,6 +504,14 @@ class PatchedText(OriginalText):
                 start_idx = f"{i}.{start_col}"
                 end_idx = f"{i}.{end_col}"
                 text.tag_add("string", start_idx, end_idx)
+
+            pattern = r"('''(?:\\.|[^\\])*?'''|\"\"\"(?:\\.|[^\\])*?\"\"\")"
+            for match in re.finditer(pattern, code, re.DOTALL):
+                start = match.start()
+                end = match.end()
+                start_index = text.index(f"1.0 + {start} chars")
+                end_index = text.index(f"1.0 + {end} chars")
+                text.tag_add("string", start_index, end_index)
 
     def after_colorify(self, delay=100):
         if self._colorify_after_id:
