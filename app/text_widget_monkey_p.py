@@ -448,10 +448,10 @@ class PatchedText(OriginalText):
             self._colorify_after_id = None
 
         text = self.get_active_text()
-        code = text.get("1.0", "end")
         if not text or getattr(text, 'disable_colorify', False):
             return
 
+        code = text.get("1.0", "end")
         # Clear old tags
         text.tag_remove("comment", "1.0", "end")
         text.tag_remove("keyword", "1.0", "end")
